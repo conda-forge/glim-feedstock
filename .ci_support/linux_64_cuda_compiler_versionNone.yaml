@@ -7,7 +7,7 @@ c_stdlib:
 c_stdlib_version:
 - '2.17'
 channel_sources:
-- conda-forge
+- conda-forge/label/gtsam_dev,conda-forge
 channel_targets:
 - conda-forge main
 cuda_compiler:
@@ -24,10 +24,12 @@ eigen_abi_devel:
 - 5.0.1
 fmt:
 - '12.1'
+gtsam:
+- 4.2.*
+- 4.3deva1
 libboost_devel:
 - '1.90'
 libopencv:
-- 4.13.0
 - 5.0.0
 spdlog:
 - '1.17'
