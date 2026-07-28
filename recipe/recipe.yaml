@@ -3,7 +3,7 @@ schema_version: 1
 context:
   name: glim
   version: "1.2.1"
-  build_number: 5
+  build_number: 6
 
 recipe:
   name: ${{ name|lower }}-split
@@ -41,13 +41,7 @@ outputs:
           then:
             - test -n "$CUDAARCHS"
             - echo $CUDAARCHS
-        - cmake -S . -B build -GNinja
-          ${{ "${CMAKE_ARGS}" if not win else "%CMAKE_ARGS%" }}
-          -DBUILD_WITH_VIEWER=OFF
-          -DBUILD_WITH_MARCH_NATIVE=OFF
-          -DBUILD_WITH_OPENCV=ON
-          -DCMAKE_CUDA_FLAGS="-Wno-deprecated-gpu-targets"
-          -DBUILD_WITH_CUDA=${{ "ON" if cuda_compiler_version != "None" else "OFF" }}
+        - cmake -S . -B build -GNinja ${{ "${CMAKE_ARGS}" if not win else "%CMAKE_ARGS%" }} -DBUILD_WITH_VIEWER=OFF -DBUILD_WITH_MARCH_NATIVE=OFF -DBUILD_WITH_OPENCV=ON -DCMAKE_CUDA_FLAGS="-Wno-deprecated-gpu-targets" -DBUILD_WITH_CUDA=${{ "ON" if cuda_compiler_version != "None" else "OFF" }} 
           -DCMAKE_CUDA_ARCHITECTURES="${CUDAARCHS-}"
         - cmake --build build --config Release
         - cmake --install build/ --config Release
