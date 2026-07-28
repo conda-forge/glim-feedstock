@@ -64,7 +64,7 @@ outputs:
       host:
         - fmt
         - gtsam
-        - gtsam-points-devel * ${{ "cuda*" if cuda_compiler_version != "None" else "cpu*" }}
+        - gtsam-points-devel >=1.2.2 ${{ "cuda*" if cuda_compiler_version != "None" else "cpu*" }}
         - eigen-abi-devel
         - libboost-devel
         - libopencv
