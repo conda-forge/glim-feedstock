@@ -2,8 +2,8 @@ schema_version: 1
 
 context:
   name: glim
-  version: "1.2.1"
-  build_number: 5
+  version: "1.2.2"
+  build_number: 0
 
 recipe:
   name: ${{ name|lower }}-split
@@ -11,7 +11,7 @@ recipe:
 
 source:
   - url: https://github.com/koide3/glim/archive/refs/tags/v${{ version }}.tar.gz
-    sha256: baa367009dff6fdcaacf87d53c2a4e2add4ac4d6668e85ebc56b2aa6432b1f14
+    sha256: c4808266c4af6cff32bce4387a74eb81eee87f08d5cd688573d93863151951d6
     patches:
       - 0001-fix-fmt-ptr-shared-ptr.patch
       - 0002-unvendor-json.patch
@@ -63,8 +63,8 @@ outputs:
         - pkg-config
       host:
         - fmt
-        - gtsam >=4.2
-        - gtsam-points-devel >=1.2.0 ${{ "cuda*" if cuda_compiler_version != "None" else "cpu*" }}
+        - gtsam
+        - gtsam-points-devel >=1.2.2 ${{ "cuda*" if cuda_compiler_version != "None" else "cpu*" }}
         - eigen-abi-devel
         - libboost-devel
         - libopencv
@@ -82,6 +82,16 @@ outputs:
             # It prevents the solver from picking the prioritized CUDA build on a CPU-only machine,
             # forcing a graceful fallback to the CPU build.
             - __cuda
+        # Override the run exports of gtsam alpha.
+        # We want the gtsam-points build to be compatible only with other dev gtsam version, not stable ones.
+        - if: match(gtsam, ">=4.3deva1,<4.3.0")
+          then:
+            - gtsam >=4.3deva1,<4.3.0
+      ignore_run_exports:
+        from_package:
+          - if: match(gtsam, ">=4.3deva1,<4.3.0")
+            then:
+              - gtsam
     tests:
       - package_contents:
           include:
