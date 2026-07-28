@@ -2,8 +2,8 @@ schema_version: 1
 
 context:
   name: glim
-  version: "1.2.1"
-  build_number: 6
+  version: "1.2.2"
+  build_number: 0
 
 recipe:
   name: ${{ name|lower }}-split
@@ -11,7 +11,7 @@ recipe:
 
 source:
   - url: https://github.com/koide3/glim/archive/refs/tags/v${{ version }}.tar.gz
-    sha256: baa367009dff6fdcaacf87d53c2a4e2add4ac4d6668e85ebc56b2aa6432b1f14
+    sha256: c4808266c4af6cff32bce4387a74eb81eee87f08d5cd688573d93863151951d6
     patches:
       - 0001-fix-fmt-ptr-shared-ptr.patch
       - 0002-unvendor-json.patch
