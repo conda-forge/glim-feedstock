@@ -30,6 +30,7 @@ gtsam:
 libboost_devel:
 - '1.90'
 libopencv:
+- 4.13.0
 - 5.0.0
 spdlog:
 - '1.17'
