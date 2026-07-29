@@ -3,3 +3,6 @@ channel_sources:
 gtsam:
 - '4.2.*'
 - '4.3deva1'
+libopencv:
+  - '5.0.0'
+  - '4.13.0'
