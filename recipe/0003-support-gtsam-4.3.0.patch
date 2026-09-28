@@ -1,0 +1,340 @@
+Support GTSAM 4.3.0
+
+GTSAM 4.3.0 removed gtsam/base/make_shared.h and gtsam::make_shared
+(borglab/gtsam#2579), so glim failed with "make_shared is not a member of
+gtsam".
+
+Add glim::make_shared_ptr in glim/util/gtsam_make_shared.hpp. It forwards to
+gtsam::make_shared when make_shared.h exists (GTSAM 4.2 and 4.3a1) and to
+std::make_shared otherwise. It is not named make_shared to avoid ambiguities
+with std::make_shared and boost::make_shared, and it does not depend on any
+gtsam_points change.
+
+Tested by building glim against GTSAM 4.2.2, 4.3a1 and 4.3.0, the first two
+with the unpatched gtsam_points 1.2.2.
+
+diff --git a/include/glim/util/gtsam_make_shared.hpp b/include/glim/util/gtsam_make_shared.hpp
+new file mode 100644
+index 0000000..723d660
+--- /dev/null
++++ b/include/glim/util/gtsam_make_shared.hpp
+@@ -0,0 +1,25 @@
++#pragma once
++
++#include <memory>
++#include <utility>
++
++#if __has_include(<gtsam/base/make_shared.h>)
++// Removed in GTSAM 4.3.0 (borglab/gtsam#2579), where std::make_shared handles over-aligned types (C++17).
++#include <gtsam/base/make_shared.h>
++#define GLIM_HAS_GTSAM_MAKE_SHARED
++#endif
++
++namespace glim {
++
++/// Allocate an object owned by the smart pointer type used by GTSAM (boost::shared_ptr before 4.3, std::shared_ptr since).
++/// Not named make_shared to avoid ambiguities with std::make_shared and boost::make_shared.
++template <typename T, typename... Args>
++auto make_shared_ptr(Args&&... args) {
++#ifdef GLIM_HAS_GTSAM_MAKE_SHARED
++  return gtsam::make_shared<T>(std::forward<Args>(args)...);
++#else
++  return std::make_shared<T>(std::forward<Args>(args)...);
++#endif
++}
++
++}  // namespace glim
+diff --git a/src/glim/mapping/global_mapping.cpp b/src/glim/mapping/global_mapping.cpp
+index 0a511cf..d9f0e02 100644
+--- a/src/glim/mapping/global_mapping.cpp
++++ b/src/glim/mapping/global_mapping.cpp
+@@ -36,6 +36,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -386,7 +387,7 @@ std::shared_ptr<gtsam::NonlinearFactorGraph> GlobalMapping::create_between_facto
+   const gtsam::Pose3 init_delta = gtsam::Pose3((submaps[last]->T_world_origin.inverse() * submaps[current]->T_world_origin).matrix());
+ 
+   if (params.between_registration_type == "NONE") {
+-    factors->add(gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), init_delta, gtsam::noiseModel::Isotropic::Precision(6, 1e6)));
++    factors->add(glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), init_delta, gtsam::noiseModel::Isotropic::Precision(6, 1e6)));
+     return factors;
+   }
+ 
+@@ -397,7 +398,7 @@ std::shared_ptr<gtsam::NonlinearFactorGraph> GlobalMapping::create_between_facto
+   gtsam::NonlinearFactorGraph graph;
+   graph.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(X(0), gtsam::Pose3::Identity(), gtsam::noiseModel::Isotropic::Precision(6, 1e6));
+ 
+-  auto factor = gtsam::make_shared<gtsam_points::IntegratedGICPFactor>(X(0), X(1), submaps[last]->frame, submaps[current]->frame);
++  auto factor = glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor>(X(0), X(1), submaps[last]->frame, submaps[current]->frame);
+   factor->set_max_correspondence_distance(0.5);
+   factor->set_num_threads(2);
+   graph.add(factor);
+@@ -423,7 +424,7 @@ std::shared_ptr<gtsam::NonlinearFactorGraph> GlobalMapping::create_between_facto
+   const auto linearized = factor->linearize(values);
+   const gtsam::Matrix6 H = linearized->hessianBlockDiagonal()[X(1)] + 1e6 * gtsam::Matrix6::Identity();
+ 
+-  factors->add(gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), estimated_delta, gtsam::noiseModel::Gaussian::Information(H)));
++  factors->add(glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), estimated_delta, gtsam::noiseModel::Gaussian::Information(H)));
+   return factors;
+ }
+ 
+@@ -477,7 +478,7 @@ std::shared_ptr<gtsam::NonlinearFactorGraph> GlobalMapping::create_matching_cost
+     logger->warn("create a between factor to prevent the submap from being isolated");
+     const int last = current - 1;
+     const gtsam::Pose3 init_delta = gtsam::Pose3((submaps[last]->T_world_origin.inverse() * submaps[current]->T_world_origin).matrix());
+-    factors->add(gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), init_delta, gtsam::noiseModel::Isotropic::Precision(6, 1e6)));
++    factors->add(glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(X(last), X(current), init_delta, gtsam::noiseModel::Isotropic::Precision(6, 1e6)));
+   }
+ 
+   return factors;
+diff --git a/src/glim/mapping/global_mapping_pose_graph.cpp b/src/glim/mapping/global_mapping_pose_graph.cpp
+index 4e2d1df..4de042a 100644
+--- a/src/glim/mapping/global_mapping_pose_graph.cpp
++++ b/src/glim/mapping/global_mapping_pose_graph.cpp
+@@ -24,6 +24,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -390,7 +391,7 @@ void GlobalMappingPoseGraph::loop_detection_task() {
+ 
+       if (params.registration_type == "GICP") {
+         auto factor =
+-          gtsam::make_shared<gtsam_points::IntegratedGICPFactor>(gtsam::Pose3(), 0, candidate.target->submap->frame, candidate.source->subsampled, candidate.target->tree);
++          glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor>(gtsam::Pose3(), 0, candidate.target->submap->frame, candidate.source->subsampled, candidate.target->tree);
+         factor->set_max_correspondence_distance(params.gicp_max_correspondence_dist);
+ 
+         gtsam::NonlinearFactorGraph graph;
+@@ -403,7 +404,7 @@ void GlobalMappingPoseGraph::loop_detection_task() {
+         error = factor->error(values);
+         inlier_fraction = factor->inlier_fraction();
+       } else if (params.registration_type == "VGICP") {
+-        auto factor = gtsam::make_shared<gtsam_points::IntegratedVGICPFactor>(gtsam::Pose3(), 0, candidate.target->voxels, candidate.source->subsampled);
++        auto factor = glim::make_shared_ptr<gtsam_points::IntegratedVGICPFactor>(gtsam::Pose3(), 0, candidate.target->voxels, candidate.source->subsampled);
+ 
+         gtsam::NonlinearFactorGraph graph;
+         graph.add(factor);
+@@ -465,7 +466,7 @@ void GlobalMappingPoseGraph::loop_detection_task() {
+       gtsam::SharedNoiseModel noise_model = gtsam::noiseModel::Isotropic::Sigma(6, params.loop_factor_stddev);
+       noise_model = gtsam::noiseModel::Robust::Create(gtsam::noiseModel::mEstimator::Huber::Create(params.loop_factor_robust_width), noise_model);
+       factors.emplace_back(
+-        gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(candidates[i].target->submap->id), X(candidates[i].source->submap->id), T_target_source[i], noise_model));
++        glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(X(candidates[i].target->submap->id), X(candidates[i].source->submap->id), T_target_source[i], noise_model));
+     }
+ 
+     detected_loops.insert(factors);
+diff --git a/src/glim/mapping/sub_mapping.cpp b/src/glim/mapping/sub_mapping.cpp
+index 54b0ba9..b140e75 100644
+--- a/src/glim/mapping/sub_mapping.cpp
++++ b/src/glim/mapping/sub_mapping.cpp
+@@ -28,6 +28,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -199,7 +200,7 @@ void SubMapping::insert_frame(const EstimationFrame::ConstPtr& odom_frame_) {
+         logger->warn("use an identity covariance because either of last or current frames have too few points (last={} current={})", last_frame->size(), current_frame->size());
+         noise_model = gtsam::noiseModel::Isotropic::Precision(6, 1e3);
+       } else {
+-        auto factor = gtsam::make_shared<gtsam_points::IntegratedGICPFactor>(X(last), X(current), last_frame, current_frame);
++        auto factor = glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor>(X(last), X(current), last_frame, current_frame);
+         auto linearized = factor->linearize(*values);
+         // graph->emplace_shared<gtsam::LinearContainerFactor>(linearized, *values);
+ 
+@@ -304,7 +305,7 @@ void SubMapping::insert_frame(const EstimationFrame::ConstPtr& odom_frame_) {
+             continue;
+           }
+ 
+-          auto factor = gtsam::make_shared<gtsam_points::IntegratedVGICPFactorGPU>(X(keyframe_indices[i]), X(current), voxelmap, keyframes.back()->frame, stream, buffer);
++          auto factor = glim::make_shared_ptr<gtsam_points::IntegratedVGICPFactorGPU>(X(keyframe_indices[i]), X(current), voxelmap, keyframes.back()->frame, stream, buffer);
+           graph->add(factor);
+         }
+       }
+diff --git a/src/glim/odometry/loose_initial_state_estimation.cpp b/src/glim/odometry/loose_initial_state_estimation.cpp
+index 6f0fa39..8b8e731 100644
+--- a/src/glim/odometry/loose_initial_state_estimation.cpp
++++ b/src/glim/odometry/loose_initial_state_estimation.cpp
+@@ -21,6 +21,7 @@
+ #include <glim/common/imu_integration.hpp>
+ #include <glim/common/cloud_covariance_estimation.hpp>
+ #include <glim/odometry/callbacks.hpp>
++#include <glim/util/gtsam_make_shared.hpp>
+ 
+ namespace glim {
+ 
+@@ -62,7 +63,7 @@ void LooseInitialStateEstimation::insert_frame(const PreprocessedFrame::ConstPtr
+ 
+     gtsam::NonlinearFactorGraph graph;
+     auto factor =
+-      gtsam::make_shared<gtsam_points::IntegratedGICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(gtsam::Pose3::Identity(), 0, target_ivox, frame, target_ivox);
++      glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(gtsam::Pose3::Identity(), 0, target_ivox, frame, target_ivox);
+     factor->set_num_threads(num_threads);
+     graph.add(factor);
+ 
+diff --git a/src/glim/odometry/odometry_estimation_cpu.cpp b/src/glim/odometry/odometry_estimation_cpu.cpp
+index cd0dab2..3f929fc 100644
+--- a/src/glim/odometry/odometry_estimation_cpu.cpp
++++ b/src/glim/odometry/odometry_estimation_cpu.cpp
+@@ -23,6 +23,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -93,7 +94,7 @@ gtsam::NonlinearFactorGraph OdometryEstimationCPU::create_factors(const int curr
+   // Create frame-to-model matching factor
+   gtsam::NonlinearFactorGraph matching_cost_factors;
+   if (params->registration_type == "GICP") {
+-    auto gicp_factor = gtsam::make_shared<gtsam_points::IntegratedGICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(
++    auto gicp_factor = glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(
+       gtsam::Pose3(),
+       X(current),
+       target_ivox,
+@@ -104,7 +105,7 @@ gtsam::NonlinearFactorGraph OdometryEstimationCPU::create_factors(const int curr
+     matching_cost_factors.add(gicp_factor);
+   } else if (params->registration_type == "VGICP") {
+     for (const auto& voxelmap : target_voxelmaps) {
+-      auto vgicp_factor = gtsam::make_shared<gtsam_points::IntegratedVGICPFactor>(gtsam::Pose3(), X(current), voxelmap, frames[current]->frame);
++      auto vgicp_factor = glim::make_shared_ptr<gtsam_points::IntegratedVGICPFactor>(gtsam::Pose3(), X(current), voxelmap, frames[current]->frame);
+       vgicp_factor->set_num_threads(params->num_threads);
+       matching_cost_factors.add(vgicp_factor);
+     }
+diff --git a/src/glim/odometry/odometry_estimation_ct.cpp b/src/glim/odometry/odometry_estimation_ct.cpp
+index d85b121..f254fba 100644
+--- a/src/glim/odometry/odometry_estimation_ct.cpp
++++ b/src/glim/odometry/odometry_estimation_ct.cpp
+@@ -22,6 +22,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -157,7 +158,7 @@ EstimationFrame::ConstPtr OdometryEstimationCT::insert_frame(const PreprocessedF
+     // Create CT-GICP factor
+     gtsam::NonlinearFactorGraph graph;
+     auto factor =
+-      gtsam::make_shared<gtsam_points::IntegratedCT_GICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(X(current), Y(current), target_ivox, new_frame->frame, target_ivox);
++      glim::make_shared_ptr<gtsam_points::IntegratedCT_GICPFactor_<gtsam_points::iVox, gtsam_points::PointCloud>>(X(current), Y(current), target_ivox, new_frame->frame, target_ivox);
+     factor->set_num_threads(params.num_threads);
+     factor->set_max_correspondence_distance(params.max_correspondence_distance);
+     graph.add(factor);
+diff --git a/src/glim/odometry/odometry_estimation_gpu.cpp b/src/glim/odometry/odometry_estimation_gpu.cpp
+index b20d4ea..7e032ef 100644
+--- a/src/glim/odometry/odometry_estimation_gpu.cpp
++++ b/src/glim/odometry/odometry_estimation_gpu.cpp
+@@ -25,6 +25,7 @@
+ #include <glim/common/cloud_covariance_estimation.hpp>
+ 
+ #include <glim/odometry/callbacks.hpp>
++#include <glim/util/gtsam_make_shared.hpp>
+ 
+ namespace glim {
+ 
+@@ -141,7 +142,7 @@ gtsam::NonlinearFactorGraph OdometryEstimationGPU::create_factors(const int curr
+     const auto& buffer = stream_buffer.second;
+ 
+     for (const auto& voxelmap : target->voxelmaps) {
+-      auto factor = gtsam::make_shared<gtsam_points::IntegratedVGICPFactorGPU>(target_key, source_key, voxelmap, source->frame, stream, buffer);
++      auto factor = glim::make_shared_ptr<gtsam_points::IntegratedVGICPFactorGPU>(target_key, source_key, voxelmap, source->frame, stream, buffer);
+       factor->set_enable_surface_validation(true);
+       factors.add(factor);
+     }
+@@ -158,7 +159,7 @@ gtsam::NonlinearFactorGraph OdometryEstimationGPU::create_factors(const int curr
+     const auto& buffer = stream_buffer.second;
+ 
+     for (const auto& voxelmap : target->voxelmaps) {
+-      auto factor = gtsam::make_shared<gtsam_points::IntegratedVGICPFactorGPU>(fixed_target_pose, source_key, voxelmap, source->frame, stream, buffer);
++      auto factor = glim::make_shared_ptr<gtsam_points::IntegratedVGICPFactorGPU>(fixed_target_pose, source_key, voxelmap, source->frame, stream, buffer);
+       factor->set_enable_surface_validation(true);
+       factors.add(factor);
+     }
+diff --git a/src/glim/odometry/odometry_estimation_imu.cpp b/src/glim/odometry/odometry_estimation_imu.cpp
+index cd71721..1a3f85b 100644
+--- a/src/glim/odometry/odometry_estimation_imu.cpp
++++ b/src/glim/odometry/odometry_estimation_imu.cpp
+@@ -22,6 +22,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -274,7 +275,7 @@ EstimationFrame::ConstPtr OdometryEstimationIMU::insert_frame(const Preprocessed
+   // Create IMU factor
+   gtsam::ImuFactor::shared_ptr imu_factor;
+   if (num_imu_integrated >= 2) {
+-    imu_factor = gtsam::make_shared<gtsam::ImuFactor>(X(last), V(last), X(current), V(current), B(last), imu_integration->integrated_measurements());
++    imu_factor = glim::make_shared_ptr<gtsam::ImuFactor>(X(last), V(last), X(current), V(current), B(last), imu_integration->integrated_measurements());
+     new_factors.add(imu_factor);
+   } else {
+     logger->warn("insufficient number of IMU data between LiDAR scans!! (odometry_estimation)");
+diff --git a/src/glim/viewer/interactive/manual_loop_close_modal.cpp b/src/glim/viewer/interactive/manual_loop_close_modal.cpp
+index ed6a7f2..2eb9bc1 100644
+--- a/src/glim/viewer/interactive/manual_loop_close_modal.cpp
++++ b/src/glim/viewer/interactive/manual_loop_close_modal.cpp
+@@ -31,6 +31,7 @@
+ 
+ #ifdef GTSAM_USE_TBB
+ #include <tbb/task_arena.h>
++#include <glim/util/gtsam_make_shared.hpp>
+ #endif
+ 
+ namespace glim {
+@@ -477,12 +478,12 @@ std::shared_ptr<Eigen::Isometry3d> ManualLoopCloseModal::align(guik::ProgressInt
+   graph.emplace_shared<gtsam::PriorFactor<gtsam::Pose3>>(0, gtsam::Pose3::Identity(), gtsam::noiseModel::Isotropic::Precision(6, 1e6));
+ 
+   if (target->has_covs() && source->has_covs()) {
+-    auto factor = gtsam::make_shared<gtsam_points::IntegratedGICPFactor>(0, 1, target, source);
++    auto factor = glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor>(0, 1, target, source);
+     factor->set_num_threads(num_threads);
+     factor->set_max_correspondence_distance(max_correspondence_distance);
+     graph.add(factor);
+   } else {
+-    auto factor = gtsam::make_shared<gtsam_points::IntegratedICPFactor>(0, 1, target, source);
++    auto factor = glim::make_shared_ptr<gtsam_points::IntegratedICPFactor>(0, 1, target, source);
+     factor->set_num_threads(num_threads);
+     factor->set_max_correspondence_distance(max_correspondence_distance);
+     graph.add(factor);
+@@ -546,7 +547,7 @@ gtsam::NonlinearFactor::shared_ptr ManualLoopCloseModal::create_factor() {
+     const Eigen::Isometry3d T_source_anchors = source_anchor->T_world_origin;
+     const Eigen::Isometry3d T_anchort_anchors = T_target_anchort.inverse() * T_target_source * T_source_anchors;
+ 
+-    return gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(
++    return glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(
+       X(target_anchor->id),
+       X(source_anchor->id),
+       gtsam::Pose3(T_anchort_anchors.matrix()),
+@@ -559,7 +560,7 @@ gtsam::NonlinearFactor::shared_ptr ManualLoopCloseModal::create_factor() {
+   values.insert(0, gtsam::Pose3::Identity());
+   values.insert(1, T_target_source);
+ 
+-  auto factor = gtsam::make_shared<gtsam_points::IntegratedGICPFactor>(0, 1, target, source);
++  auto factor = glim::make_shared_ptr<gtsam_points::IntegratedGICPFactor>(0, 1, target, source);
+   factor->set_num_threads(num_threads);
+   factor->set_max_correspondence_distance(max_correspondence_distance);
+ 
+@@ -571,7 +572,7 @@ gtsam::NonlinearFactor::shared_ptr ManualLoopCloseModal::create_factor() {
+   const gtsam::Pose3 T_ga_a = gtsam::Pose3(gtsam::Rot3(target_pose.linear()), gtsam::Vector3::Zero());
+   const gtsam::Pose3 T_a_b = T_ga_a.inverse() * T_target_source * T_gb_b;
+ 
+-  return gtsam::make_shared<gtsam::BetweenFactor<gtsam::Pose3>>(target_key, source_key, T_a_b, gtsam::noiseModel::Gaussian::Information(information_scale * H));
++  return glim::make_shared_ptr<gtsam::BetweenFactor<gtsam::Pose3>>(target_key, source_key, T_a_b, gtsam::noiseModel::Gaussian::Information(information_scale * H));
+ }
+ 
+ void ManualLoopCloseModal::draw_canvas() {
