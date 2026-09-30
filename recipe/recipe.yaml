@@ -3,7 +3,7 @@ schema_version: 1
 context:
   name: glim
   version: "1.2.2"
-  build_number: 2
+  build_number: 3
 
 recipe:
   name: ${{ name|lower }}-split
@@ -15,6 +15,8 @@ source:
     patches:
       - 0001-fix-fmt-ptr-shared-ptr.patch
       - 0002-unvendor-json.patch
+      # Port to GTSAM 4.3.0, keeping GTSAM 4.2 and 4.3a1 working.
+      - 0003-support-gtsam-4.3.0.patch
 
 build:
   skip: not linux
@@ -82,16 +84,6 @@ outputs:
             # It prevents the solver from picking the prioritized CUDA build on a CPU-only machine,
             # forcing a graceful fallback to the CPU build.
             - __cuda
-        # Override the run exports of gtsam alpha.
-        # We want the gtsam-points build to be compatible only with other dev gtsam version, not stable ones.
-        - if: match(gtsam, ">=4.3deva1,<4.3.0")
-          then:
-            - gtsam >=4.3deva1,<4.3.0
-      ignore_run_exports:
-        from_package:
-          - if: match(gtsam, ">=4.3deva1,<4.3.0")
-            then:
-              - gtsam
     tests:
       - package_contents:
           include:
