@@ -1,3 +1,5 @@
+DOCKER_PLATFORM:
+- linux/amd64
 c_compiler:
 - gcc
 c_compiler_version:
@@ -30,7 +32,7 @@ libboost_devel:
 - '1.90'
 libopencv:
 - 4.13.0
-- 5.0.0
+- 5.1.0
 spdlog:
 - '1.17'
 target_platform:
