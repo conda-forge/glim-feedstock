@@ -43,7 +43,7 @@ outputs:
           then:
             - test -n "$CUDAARCHS"
             - echo $CUDAARCHS
-        - >
+        - >-
           cmake -S . -B build
             -GNinja ${{ "${CMAKE_ARGS}" if not win else "%CMAKE_ARGS%" }}
             -DBUILD_WITH_VIEWER=OFF
